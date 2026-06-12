@@ -1,67 +1,92 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
 import tensorflow as tf
-import joblib
+import pickle
 
-model = tf.keras.models.load_model(
-    "attention_model.keras"
+# ---------------- PAGE CONFIG ----------------
+
+st.set_page_config(
+    page_title="Healthcare NLP Dashboard",
+    page_icon="🏥",
+    layout="wide"
 )
 
-tokenizer = joblib.load(
-    "tokenizer.pkl"
-)
+# ---------------- LOAD FILES ----------------
 
-encoder = joblib.load(
-    "label_encoder.pkl"
-)
+@st.cache_resource
+def load_model():
+    return tf.keras.models.load_model("model.keras")
+
+@st.cache_resource
+def load_tokenizer():
+    with open("tokenizer.pkl", "rb") as f:
+        return pickle.load(f)
+
+@st.cache_resource
+def load_encoder():
+    with open("label_encoder.pkl", "rb") as f:
+        return pickle.load(f)
+
+try:
+    model = load_model()
+    tokenizer = load_tokenizer()
+    encoder = load_encoder()
+
+except Exception as e:
+    st.error(f"Error loading files: {e}")
+    st.stop()
+
+# ---------------- SETTINGS ----------------
 
 MAX_LEN = 250
 
-st.title(
-    "Healthcare NLP Dashboard"
+# ---------------- UI ----------------
+
+st.title("🏥 Healthcare NLP Dashboard")
+st.markdown(
+    "Predict the **Medical Specialty** from a clinical report using Deep Learning."
 )
 
 report = st.text_area(
-    "Paste Medical Report"
+    "Paste Medical Report",
+    height=250,
+    placeholder="Enter patient report here..."
 )
 
-if report:
+if st.button("Predict Specialty"):
 
-    seq = tokenizer.texts_to_sequences(
-        [report]
-    )
+    if not report.strip():
+        st.warning("Please enter a medical report.")
+    else:
 
-    pad = tf.keras.preprocessing.sequence.pad_sequences(
-        seq,
-        maxlen=MAX_LEN,
-        padding="post"
-    )
+        seq = tokenizer.texts_to_sequences([report])
 
-    pred = model.predict(
-        pad
-    )
+        pad = tf.keras.preprocessing.sequence.pad_sequences(
+            seq,
+            maxlen=MAX_LEN,
+            padding="post"
+        )
 
-    index = np.argmax(pred)
+        pred = model.predict(pad, verbose=0)
 
-    specialty = encoder.inverse_transform(
-        [index]
-    )[0]
+        index = np.argmax(pred)
 
-    confidence = np.max(pred)
+        specialty = encoder.inverse_transform([index])[0]
 
-    st.subheader(
-        "Predicted Specialty"
-    )
+        confidence = float(np.max(pred) * 100)
 
-    st.write(
-        specialty
-    )
+        col1, col2 = st.columns(2)
 
-    st.subheader(
-        "Confidence Score"
-    )
+        with col1:
+            st.metric(
+                "Predicted Specialty",
+                specialty
+            )
 
-    st.write(
-        float(confidence)
-    )
+        with col2:
+            st.metric(
+                "Confidence",
+                f"{confidence:.2f}%"
+            )
+
+        st.success("Prediction completed successfully.")
