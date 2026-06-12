@@ -2,7 +2,6 @@ import streamlit as st
 import numpy as np
 import tensorflow as tf
 import pickle
-import os
 
 # ---------------- PAGE CONFIG ----------------
 
@@ -12,43 +11,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- DEBUG SECTION ----------------
-
-st.sidebar.header("System Diagnostics")
-
-st.sidebar.write("Current Directory:")
-st.sidebar.code(os.getcwd())
-
-st.sidebar.write("Available Files:")
-st.sidebar.write(os.listdir("."))
-
-# ---------------- FILE CHECKS ----------------
-
-required_files = [
-    "attention_model.keras",
-    "tokenizer.pkl",
-    "label_encoder.pkl"
-]
-
-missing_files = []
-
-for file in required_files:
-    if not os.path.exists(file):
-        missing_files.append(file)
-
-if missing_files:
-    st.error(
-        f"Missing files: {', '.join(missing_files)}"
-    )
-    st.stop()
-
-# ---------------- LOAD RESOURCES ----------------
+# ---------------- LOAD MODEL ----------------
 
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model(
-        "attention_model.keras"
-    )
+    return tf.keras.models.load_model("model.keras")
 
 @st.cache_resource
 def load_tokenizer():
@@ -66,31 +33,28 @@ try:
     encoder = load_encoder()
 
 except Exception as e:
-    st.error(f"Loading Error: {e}")
+    st.error(f"Error loading files: {e}")
     st.stop()
 
 # ---------------- SETTINGS ----------------
 
 MAX_LEN = 250
 
-# ---------------- HEADER ----------------
+# ---------------- UI ----------------
 
 st.title("🏥 Healthcare NLP Dashboard")
 
 st.markdown("""
-### Medical Specialty Prediction System
+### Medical Specialty Prediction
 
-Paste a medical report and predict the most likely specialty.
+Paste a medical report and the AI model will predict the most likely medical specialty.
 """)
-
-# ---------------- INPUT ----------------
 
 report = st.text_area(
     "Paste Medical Report",
-    height=250
+    height=250,
+    placeholder="Enter patient medical report..."
 )
-
-# ---------------- PREDICTION ----------------
 
 if st.button("Predict Specialty"):
 
@@ -98,9 +62,7 @@ if st.button("Predict Specialty"):
         st.warning("Please enter a medical report.")
     else:
 
-        seq = tokenizer.texts_to_sequences(
-            [report]
-        )
+        seq = tokenizer.texts_to_sequences([report])
 
         padded = tf.keras.preprocessing.sequence.pad_sequences(
             seq,
@@ -114,11 +76,9 @@ if st.button("Predict Specialty"):
             verbose=0
         )
 
-        predicted_index = np.argmax(
-            prediction
-        )
+        predicted_index = np.argmax(prediction)
 
-        specialty = encoder.inverse_transform(
+        predicted_specialty = encoder.inverse_transform(
             [predicted_index]
         )[0]
 
@@ -131,7 +91,7 @@ if st.button("Predict Specialty"):
         with col1:
             st.metric(
                 "Predicted Specialty",
-                specialty
+                predicted_specialty
             )
 
         with col2:
@@ -140,13 +100,22 @@ if st.button("Predict Specialty"):
                 f"{confidence:.2f}%"
             )
 
-        st.success(
-            "Prediction completed successfully."
-        )
+        st.success("Prediction completed successfully.")
 
-# ---------------- FOOTER ----------------
+        # Probability chart
+        try:
+            labels = encoder.classes_
+
+            probs = {
+                labels[i]: float(prediction[0][i] * 100)
+                for i in range(len(labels))
+            }
+
+            st.subheader("Prediction Probabilities")
+            st.bar_chart(probs)
+
+        except:
+            pass
 
 st.markdown("---")
-st.caption(
-    "Healthcare NLP Classification using Deep Learning"
-)
+st.caption("Healthcare NLP Classification using Deep Learning")
