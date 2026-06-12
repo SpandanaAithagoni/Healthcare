@@ -11,11 +11,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- LOAD FILES ----------------
+# ---------------- LOAD RESOURCES ----------------
 
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model("model.keras")
+    return tf.keras.models.load_model("attention_model.keras")
 
 @st.cache_resource
 def load_tokenizer():
@@ -26,6 +26,8 @@ def load_tokenizer():
 def load_encoder():
     with open("label_encoder.pkl", "rb") as f:
         return pickle.load(f)
+
+# ---------------- INITIALIZATION ----------------
 
 try:
     model = load_model()
@@ -40,18 +42,25 @@ except Exception as e:
 
 MAX_LEN = 250
 
-# ---------------- UI ----------------
+# ---------------- HEADER ----------------
 
 st.title("🏥 Healthcare NLP Dashboard")
-st.markdown(
-    "Predict the **Medical Specialty** from a clinical report using Deep Learning."
-)
+
+st.markdown("""
+### Medical Specialty Prediction System
+
+Paste a clinical report below and the model will predict the most likely medical specialty.
+""")
+
+# ---------------- INPUT ----------------
 
 report = st.text_area(
     "Paste Medical Report",
     height=250,
-    placeholder="Enter patient report here..."
+    placeholder="Enter clinical report here..."
 )
+
+# ---------------- PREDICTION ----------------
 
 if st.button("Predict Specialty"):
 
@@ -61,32 +70,62 @@ if st.button("Predict Specialty"):
 
         seq = tokenizer.texts_to_sequences([report])
 
-        pad = tf.keras.preprocessing.sequence.pad_sequences(
+        padded = tf.keras.preprocessing.sequence.pad_sequences(
             seq,
             maxlen=MAX_LEN,
-            padding="post"
+            padding="post",
+            truncating="post"
         )
 
-        pred = model.predict(pad, verbose=0)
+        prediction = model.predict(
+            padded,
+            verbose=0
+        )
 
-        index = np.argmax(pred)
+        predicted_index = np.argmax(prediction)
 
-        specialty = encoder.inverse_transform([index])[0]
+        predicted_specialty = encoder.inverse_transform(
+            [predicted_index]
+        )[0]
 
-        confidence = float(np.max(pred) * 100)
+        confidence = float(
+            np.max(prediction) * 100
+        )
 
-        col1, col2 = st.columns(2)
+        st.success(
+            f"Predicted Specialty: {predicted_specialty}"
+        )
 
-        with col1:
-            st.metric(
-                "Predicted Specialty",
-                specialty
+        st.info(
+            f"Confidence Score: {confidence:.2f}%"
+        )
+
+        st.subheader("Prediction Probabilities")
+
+        probabilities = prediction[0]
+
+        try:
+            labels = encoder.classes_
+
+            prob_dict = {
+                labels[i]: float(probabilities[i] * 100)
+                for i in range(len(labels))
+            }
+
+            prob_dict = dict(
+                sorted(
+                    prob_dict.items(),
+                    key=lambda x: x[1],
+                    reverse=True
+                )
             )
 
-        with col2:
-            st.metric(
-                "Confidence",
-                f"{confidence:.2f}%"
-            )
+            st.bar_chart(prob_dict)
 
-        st.success("Prediction completed successfully.")
+        except Exception:
+            pass
+
+# ---------------- FOOTER ----------------
+
+st.markdown("---")
+st.caption("Healthcare NLP Classification using Deep Learning")
